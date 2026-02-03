@@ -1,25 +1,10 @@
 # Badminton SportMatcher – Simple MVP Requirements
 
 ## 1. Goal
-Build a simple web app that allows badminton players to:
-- Create a recruitment post for friendly badminton matches
-- Automatically post the content to predefined Facebook Groups
-- View the posting result
-
-This MVP focuses only on the **basic happy flow**.
-
+Build a simple web app that allows badminton players
 ---
 
-## 2. Scope
-### In Scope
-- Web app
-- Create a recruitment post
-- Automatically post to Facebook Groups
-- View posting result
-
----
-
-## 3. Basic Flow (Happy Path)
+## 2. Basic Flow (Happy Path)
 
 1. User opens the web app  
 2. User creates a recruitment post  
@@ -28,7 +13,7 @@ This MVP focuses only on the **basic happy flow**.
 
 ---
 
-## 4. Recruitment Post
+## 3. Recruitment Post
 
 ### Fields
 - Title
@@ -39,7 +24,7 @@ This MVP focuses only on the **basic happy flow**.
 
 ---
 
-## 5. Facebook Group Posting
+## 4. Facebook Group Posting
 
 ### Description
 - After submission, the system automatically posts the recruitment content to multiple Facebook Groups
@@ -54,7 +39,7 @@ This MVP focuses only on the **basic happy flow**.
 
 ---
 
-## 6. View Result
+## 5. View Result
 
 ### Description
 - User can view the created post and confirm it was posted
