@@ -1,7 +1,7 @@
 # Badminton SportMatcher – Simple MVP Requirements
 
 ## 1. Goal
-Build a simple web app that allows badminton players
+- Build a simple MVP web app
 ---
 
 ## 2. Basic Flow (Happy Path)
