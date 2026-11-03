@@ -1,0 +1,842 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Viedoc.Data Quality Mock</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an operations board read top to bottom - summary strip, then the three monitoring areas, each a grid of panels; the test steps read left to right like the pipeline itself. */
+:root {
+  --bg: #f4f6f5;
+  --surface: #ffffff;
+  --sunk: #eef1ef;
+  --fg: #121816;
+  --muted: #5b6661;
+  --line: #dde3e0;
+  --accent: #2f8a5f;
+  --accent-soft: #7dc6a0;
+  --blue: #1278b8;
+  --ok: #2f8a5f;
+  --warn: #b7770b;
+  --bad: #c84a2e;
+  --none: #8a948f;
+  --st-pending: #c9d0cc;
+  --st-backfill: #7fbeeb;
+  --st-lag: #f4b43d;
+  --st-caught: #7dc6a0;
+  --mock-bg: #fff6dc;
+  --mock-fg: #6d5300;
+  --font-display: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1312; --surface: #161d1b; --sunk: #1c2421; --fg: #e6ece9; --muted: #9aa69f; --line: #2a3330;
+    --accent: #7dc6a0; --accent-soft: #4f9c77; --blue: #7fbeeb;
+    --ok: #74c99b; --warn: #f4b43d; --bad: #ff865f; --none: #6d7772;
+    --st-pending: #3a4440; --st-backfill: #3f8cc0; --st-lag: #d99a2b; --st-caught: #4f9c77;
+    --mock-bg: #3a3014; --mock-fg: #f3e2a4;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1312; --surface: #161d1b; --sunk: #1c2421; --fg: #e6ece9; --muted: #9aa69f; --line: #2a3330;
+  --accent: #7dc6a0; --accent-soft: #4f9c77; --blue: #7fbeeb;
+  --ok: #74c99b; --warn: #f4b43d; --bad: #ff865f; --none: #6d7772;
+  --st-pending: #3a4440; --st-backfill: #3f8cc0; --st-lag: #d99a2b; --st-caught: #4f9c77;
+  --mock-bg: #3a3014; --mock-fg: #f3e2a4;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 18px; font-weight: 600; }
+h3 { font-size: 14px; font-weight: 600; }
+p { margin: 0; }
+.num, .mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 500; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.top .meta { display: flex; flex-direction: column; gap: 4px; }
+.mockbar {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--mock-bg); color: var(--mock-fg);
+  border: 1px dashed currentColor; border-radius: 6px; padding: 10px 14px; font-size: 13px;
+}
+.mockbar strong { font-weight: 600; white-space: nowrap; }
+.envchips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font-size: 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 10px; color: var(--muted); }
+
+/* status pills */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; border-radius: 999px; padding: 2px 9px 2px 7px; white-space: nowrap; border: 1px solid transparent; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.pill.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.pill.none { color: var(--none); border: 1px dashed var(--none); }
+.pill.none::before { background: transparent; border: 1.5px solid currentColor; width: 5px; height: 5px; }
+
+/* summary */
+.summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.sumcard { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sumcard a { color: inherit; text-decoration: none; }
+.sumcard a:hover h2, .sumcard a:focus-visible h2 { color: var(--accent); }
+.sumhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sumrows { display: flex; flex-direction: column; gap: 6px; }
+.sumrow { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; border-top: 1px solid var(--line); padding-top: 6px; }
+.sumrow span:first-child { color: var(--muted); }
+
+/* sections */
+section { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 12px; }
+.sechead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel.unmeasured { background: var(--sunk); border-style: dashed; }
+.panelhead { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.panelhead .t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.span-12 { grid-column: span 12; } .span-8 { grid-column: span 8; } .span-7 { grid-column: span 7; }
+.span-6 { grid-column: span 6; } .span-5 { grid-column: span 5; } .span-4 { grid-column: span 4; }
+.src { font-size: 11.5px; color: var(--muted); font-family: var(--font-data); overflow-wrap: anywhere; }
+
+/* step flow */
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; position: relative; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; position: relative; }
+.step.gap { background: var(--sunk); border-style: dashed; }
+.step + .step::before {
+  content: ""; position: absolute; left: -14px; top: 26px; width: 14px; height: 1px; background: var(--line);
+}
+.stepno { font-family: var(--font-data); font-size: 11px; color: var(--muted); }
+.pipe { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid var(--line); padding-left: 8px; min-width: 0; }
+.pipe .pname { font-size: 13.5px; font-weight: 500; color: var(--fg); overflow-wrap: anywhere; }
+.pipe .pmeta { font-family: var(--font-data); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.step.gap .pipe { border-left-style: dashed; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.runs { display: flex; gap: 3px; align-items: flex-end; height: 34px; }
+.runs i { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--accent-soft); display: block; }
+.runs i.f { background: var(--bad); }
+.runs i.t { background: repeating-linear-gradient(135deg, var(--bad) 0 3px, transparent 3px 6px); border: 1px solid var(--bad); }
+.note { font-size: 12.5px; color: var(--muted); }
+.note b { color: var(--fg); font-weight: 600; }
+
+/* suites */
+.suites { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1000px) { .suites { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.suite { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.suite.flag { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.suite .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.suite .big { font-family: var(--font-data); font-size: 18px; font-variant-numeric: tabular-nums; }
+.delta { font-family: var(--font-data); font-size: 12px; }
+.delta.down { color: var(--warn); }
+.delta.flat { color: var(--muted); }
+.delta.up { color: var(--ok); }
+
+/* charts */
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--font-data); font-size: 10.5px; fill: var(--muted); }
+.gridline { stroke: var(--line); stroke-width: 1; }
+.axis { stroke: var(--line); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.sw.line { height: 2px; width: 14px; border-radius: 0; }
+.sw.dash { height: 0; width: 14px; border-top: 2px dashed var(--bad); border-radius: 0; }
+
+/* tables */
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.r, th.r { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+
+/* AC coverage bars */
+.acrow { display: grid; grid-template-columns: 74px minmax(0, 1fr) 64px; gap: 10px; align-items: center; font-size: 13px; }
+.acbar { height: 10px; background: var(--sunk); border-radius: 3px; overflow: hidden; display: flex; }
+.acbar i { display: block; height: 100%; background: var(--accent-soft); }
+.acbar i.zero { width: 100% !important; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bad) 35%, transparent) 0 4px, transparent 4px 8px); }
+.aclist { display: flex; flex-direction: column; gap: 8px; }
+.acfeat { border-top: 1px solid var(--line); padding-top: 8px; }
+.acfeat summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; list-style: none; }
+.acfeat summary::-webkit-details-marker { display: none; }
+.acfeat summary::before { content: "▸"; color: var(--muted); margin-right: 6px; }
+.acfeat[open] summary::before { content: "▾"; }
+.acfeat summary > span:first-child { flex: 1; min-width: 0; }
+.acfeat summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.acfeat .aclist { padding: 8px 0 4px 18px; }
+#acList { display: flex; flex-direction: column; gap: 8px; }
+
+/* sync heatmap */
+.sync { display: grid; gap: 3px; font-size: 12px; }
+.sync .h { color: var(--muted); font-size: 11px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync .s { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; }
+.cell { height: 22px; border-radius: 3px; }
+.cell.pending { background: var(--st-pending); }
+.cell.backfill { background: var(--st-backfill); }
+.cell.lag { background: var(--st-lag); }
+.cell.caught { background: var(--st-caught); }
+.syncwrap { overflow-x: auto; }
+
+/* counters */
+.counters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.counter { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.counter.unmeasured { border-style: dashed; background: var(--sunk); }
+.counter .big { font-family: var(--font-data); font-size: 20px; font-variant-numeric: tabular-nums; }
+
+.gaps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin: 0; padding: 0; list-style: none; }
+.gaps li { display: flex; gap: 10px; align-items: baseline; border-top: 1px solid var(--line); padding-top: 8px; font-size: 13px; }
+.gaps li .pill { flex: none; }
+
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+@media (max-width: 1000px) {
+  .span-8, .span-7, .span-6, .span-5, .span-4 { grid-column: span 12; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .step:nth-child(3)::before { display: none; }
+}
+@media (max-width: 720px) {
+  .summary { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .step + .step::before { display: none; }
+  .suites { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gaps { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="meta">
+      <span class="label">Viedoc.Data · Nucleus data platform and viedoc-data MCP</span>
+      <h1>Quality board</h1>
+    </div>
+    <div class="envchips">
+      <span class="chip">Environment: dev1</span>
+      <span class="chip">Window: last 14 days</span>
+      <span class="chip">Refreshed: mock</span>
+    </div>
+  </header>
+
+  <div class="mockbar" role="note">
+    <strong>Mock data.</strong>
+    <span>Every number, name and run on this page is invented to show the layout. The panels follow QUALITY_KPIS.md; dashed panels are things that cannot be measured yet.</span>
+  </div>
+
+  <!-- summary -->
+  <div class="summary">
+    <div class="sumcard">
+      <a href="#tests"><div class="sumhead"><h2>Tests</h2><span class="pill warn">2 of 4 steps</span></div></a>
+      <div class="sumrows">
+        <div class="sumrow"><span>1. Before merge to main</span><span class="num">96% pass</span></div>
+        <div class="sumrow"><span>2. Before each deploy</span><span class="num">79% pass</span></div>
+        <div class="sumrow"><span>3. Right after each deploy</span><span class="num">91% · example</span></div>
+        <div class="sumrow"><span>4. On dev1, through the chatbot</span><span class="pill none">Manual only</span></div>
+        <div class="sumrow"><span>AC test coverage, Done PBIs</span><span class="num">90% · 2 with gaps</span></div>
+      </div>
+    </div>
+    <div class="sumcard">
+      <a href="#data"><div class="sumhead"><h2>Data quality</h2><span class="pill warn">1 study lagging</span></div></a>
+      <div class="sumrows">
+        <div class="sumrow"><span>Answers match MySQL</span><span class="num">88% · manual</span></div>
+        <div class="sumrow"><span>Studies fully matching</span><span class="num">2 of 4 · example</span></div>
+        <div class="sumrow"><span>Within 5 min, 14 d</span><span class="num">99.6% · 4 late</span></div>
+        <div class="sumrow"><span>Studies in sync</span><span class="num">4 of 6</span></div>
+      </div>
+    </div>
+    <div class="sumcard">
+      <a href="#tickets"><div class="sumhead"><h2>Bugs and requirements</h2><span class="pill warn">Needs attention</span></div></a>
+      <div class="sumrows">
+        <div class="sumrow"><span>Open bugs</span><span class="num">14 · oldest 41 d</span></div>
+        <div class="sumrow"><span>Questions waiting</span><span class="num">6 · oldest 19 d</span></div>
+      </div>
+    </div>
+    <div class="sumcard">
+      <a href="#health"><div class="sumhead"><h2>Product health</h2><span class="pill none">Partly measured</span></div></a>
+      <div class="sumrows">
+        <div class="sumrow"><span>Harvester errors, 7 d</span><span class="num">4</span></div>
+        <div class="sumrow"><span>Duplicates skipped, 7 d</span><span class="num">187</span></div>
+        <div class="sumrow"><span>MCP under 10 s, 7 d</span><span class="num">97.4%</span></div>
+        <div class="sumrow"><span>Failed events</span><span class="pill none">Not counted</span></div>
+        <div class="sumrow"><span>MCP errors per tool</span><span class="pill none">Not recorded</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- tests -->
+  <section id="tests">
+    <div class="sechead"><h2>Tests</h2><span class="muted small">From pull request to the running app</span></div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="panelhead"><div class="t"><span class="stepno">STEP 1</span><h3>Before merge to main</h3></div><span class="pill ok">Passing</span></div>
+        <div class="pipe"><span class="pname">[PR Validation] Build &amp; Test Apps</span><span class="pmeta">Pipeline 861 · Viedoc.Data · build-validation.yml</span></div>
+        <div class="runs" id="runs861" aria-label="Last 24 runs"></div>
+        <dl class="kv">
+          <dt>Pass rate, 14 d</dt><dd>96% (23/24)</dd>
+          <dt>Median duration</dt><dd>21 m</dd>
+          <dt>Tests, last run</dt><dd>5,072</dd>
+          <dt>Skipped</dt><dd>0</dd>
+        </dl>
+      </div>
+      <div class="step">
+        <div class="panelhead"><div class="t"><span class="stepno">STEP 2</span><h3>Before each deploy</h3></div><span class="pill warn">3 timeouts</span></div>
+        <div class="pipe"><span class="pname">1. Deploy App, Test stage</span><span class="pmeta">Pipeline 887 · Viedoc.Data · deploy.yml</span></div>
+        <div class="runs" id="runs887" aria-label="Last 14 runs"></div>
+        <dl class="kv">
+          <dt>Pass rate, 14 d</dt><dd>79% (11/14)</dd>
+          <dt>Median test stage</dt><dd>17 m</dd>
+          <dt>Timeout limit</dt><dd>20 m</dd>
+          <dt>Tests, last run</dt><dd>4,759</dd>
+          <dt>Skipped</dt><dd>0</dd>
+        </dl>
+      </div>
+      <div class="step gap">
+        <div class="panelhead"><div class="t"><span class="stepno">STEP 3</span><h3>Right after each deploy</h3></div><span class="pill none">Not built</span></div>
+        <div class="pipe"><span class="pname">1. Deploy App, smoke test step</span><span class="pmeta">Pipeline 887 · after "Deploy via deploy.ps1" · example</span></div>
+        <div class="runs" id="runsSmoke" aria-label="Example: last 11 deploys"></div>
+        <dl class="kv">
+          <dt>Pass rate, 14 d</dt><dd>91% (10/11)</dd>
+          <dt>Median duration</dt><dd>2 m</dd>
+          <dt>Checks per run</dt><dd>6</dd>
+          <dt>Last fail</dt><dd>MCP /health 503</dd>
+        </dl>
+        <p class="note">Example of what it would show. Not built yet: Task 108676, under TBI 107801 Shift Left Testing.</p>
+      </div>
+      <div class="step gap">
+        <div class="panelhead"><div class="t"><span class="stepno">STEP 4</span><h3>On dev1, through the chatbot</h3></div><span class="pill none">Manual only</span></div>
+        <div class="pipe"><span class="pname">No pipeline yet</span><span class="pmeta">Suite Viedoc.Data.Testing · Viedoc POC · run by hand</span></div>
+        <div class="runs" id="runsE2E" aria-label="Manual runs"></div>
+        <dl class="kv">
+          <dt>Runs, 14 d</dt><dd>5 (by hand)</dd>
+          <dt>Pass rate</dt><dd>88% (22/25)</dd>
+          <dt>Median duration</dt><dd>41 m</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--accent-soft)"></i>Passed run (bar height = duration)</span>
+      <span><i class="sw" style="background:var(--bad)"></i>Failed run</span>
+      <span><i class="sw" style="background:repeating-linear-gradient(135deg,var(--bad) 0 2px,transparent 2px 4px);border:1px solid var(--bad)"></i>Timed out, no .NET results</span>
+    </div>
+
+    <div class="grid">
+      <div class="panel span-12">
+        <div class="panelhead">
+          <div class="t"><h3>Test count per suite</h3><span class="muted small">1. Deploy App (887), Test stage, branch main. Last 14 days; change since 14 days ago.</span></div>
+          <span class="pill warn">1 suite dropped</span>
+        </div>
+        <div class="suites" id="suites"></div>
+        <p class="note">A drop with a green build means tests were deleted. A skipped test fails the run, so skipped stays at 0.</p>
+      </div>
+      <div class="panel span-12">
+        <div class="panelhead">
+          <div class="t"><h3>AC test coverage</h3><span class="muted small">ACs with at least one acceptance test. The headline counts PBIs whose In Sprint State is Done. Target 100%.</span></div>
+          <span class="pill warn">90%</span>
+        </div>
+        <div class="grid">
+          <div class="counters span-7" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+            <div class="counter"><span class="label">Coverage, Done PBIs</span><span class="big">90%</span><span class="src">38 of 42 ACs</span></div>
+            <div class="counter"><span class="label">Done with untested ACs</span><span class="big" style="color:var(--bad)">2 PBIs</span><span class="src">released without a test</span></div>
+            <div class="counter"><span class="label">In progress with gaps</span><span class="big" style="color:var(--warn)">3 PBIs</span><span class="src">expected while in work</span></div>
+          </div>
+          <div class="span-5"><span class="label">Coverage of Done PBIs per sprint</span><div id="acTrend"></div></div>
+        </div>
+        <div class="aclist" id="acList"></div>
+        <p class="note">Only PBIs with an untested AC are listed, Done first; fully covered PBIs are hidden. 6 PBIs are fully covered.</p>
+        <p class="note">Needs the AC test coverage script: read the <span class="mono">Requirement</span> / <span class="mono">AcceptanceCriterion</span> traits and compare with each PBI's Acceptance Criteria field.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- data quality -->
+  <section id="data">
+    <div class="sechead"><h2>Data quality (dev1)</h2><span class="muted small">Is the data the MCP serves right, complete and current?</span></div>
+    <div class="grid">
+      <div class="panel span-5">
+        <div class="panelhead">
+          <div class="t"><h3>Correctness</h3><span class="muted small">Chatbot answers checked against MySQL, end-to-end suite</span></div>
+          <span class="pill none">Manual only</span>
+        </div>
+        <div class="counters" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <div class="counter"><span class="label">Answers match MySQL</span><span class="big">22 / 25</span><span class="src">last run, by hand</span></div>
+          <div class="counter"><span class="label">Wrong answers</span><span class="big" style="color:var(--bad)">3</span><span class="src">each failed 3 of 3 times</span></div>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Question that failed</th><th>Area</th></tr></thead>
+            <tbody>
+              <tr><td>How many open queries does site 02 have?</td><td class="small muted">Queries</td></tr>
+              <tr><td>Which subjects missed visit 3?</td><td class="small muted">Visits</td></tr>
+              <tr><td>What share of forms is missing data?</td><td class="small muted">Missing data</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel span-7 unmeasured">
+        <div class="panelhead">
+          <div class="t"><h3>Completeness</h3><span class="muted small">Every record in MySQL against the read models, hourly, for studies that are caught up. Example.</span></div>
+          <span class="pill none">Not checked</span>
+        </div>
+        <div class="counters" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+          <div class="counter"><span class="label">Studies fully matching</span><span class="big">2 of 4</span><span class="src">caught-up studies only</span></div>
+          <div class="counter"><span class="label">Missing / extra records</span><span class="big">39 / 1</span><span class="src">last run</span></div>
+          <div class="counter"><span class="label">Mismatch for 3+ runs</span><span class="big" style="color:var(--bad)">1</span><span class="src">likely a bug</span></div>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Study</th><th class="r">Subject</th><th class="r">Site</th><th class="r">Event</th><th class="r">Form</th><th class="r">Item</th><th class="r">Query</th></tr></thead>
+            <tbody id="compTable"></tbody>
+          </table>
+        </div>
+        <div class="legend">
+          <span style="color:var(--ok)">✓ matches</span>
+          <span style="color:var(--warn)">−n missing, +n extra, first run</span>
+          <span style="color:var(--bad)">same mismatch for 3+ runs</span>
+        </div>
+        <p class="note"><b>MOCK Vaccine C, Form:</b> 39 missing, 0 extra, for 3 runs in a row; for example form IDs 48213 and 48230. <b>MOCK Derm D, Query:</b> 1 extra, first run only, probably a change still in flight.</p>
+      </div>
+      <div class="panel span-7">
+        <div class="panelhead">
+          <div class="t"><h3>Freshness</h3><span class="muted small">Viedoc change until the MCP can read it, live changes only. Target: 100% within 5 min.</span></div>
+          <span class="pill ok">100% today</span>
+        </div>
+        <div class="counters">
+          <div class="counter"><span class="label">Within 5 min, 14 d</span><span class="big">99.6%</span><span class="src">1,065 of 1,069 changes</span></div>
+          <div class="counter"><span class="label">Later than 5 min</span><span class="big" style="color:var(--bad)">4</span><span class="src">on 3 days</span></div>
+          <div class="counter"><span class="label">Slowest change</span><span class="big">7 m 20 s</span><span class="src">Form saved, 10/25</span></div>
+          <div class="counter"><span class="label">Within 5 min, today</span><span class="big">100%</span><span class="src">84 of 84 changes</span></div>
+        </div>
+        <div id="freshChart"></div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--accent-soft)"></i>Changes readable within 5 min</span>
+          <span><i class="sw" style="background:var(--bad)"></i>Later than 5 min (count on top)</span>
+        </div>
+      </div>
+      <div class="panel span-5">
+        <div class="panelhead">
+          <div class="t"><h3>Sync status</h3><span class="muted small">CDC state per study and harvester</span></div>
+          <span class="pill warn">4 of 6 in sync</span>
+        </div>
+        <div class="syncwrap"><div class="sync" id="syncGrid"></div></div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--st-caught)"></i>Caught up</span>
+          <span><i class="sw" style="background:var(--st-lag)"></i>Lagging</span>
+          <span><i class="sw" style="background:var(--st-backfill)"></i>Backfilling</span>
+          <span><i class="sw" style="background:var(--st-pending)"></i>Pending</span>
+        </div>
+        <p class="note" id="lagNote"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- tickets -->
+  <section id="tickets">
+    <div class="sechead"><h2>Bugs and requirements</h2><span class="muted small">ADO work items</span></div>
+    <div class="grid">
+      <div class="panel span-6">
+        <div class="panelhead"><div class="t"><h3>Open bugs</h3><span class="muted small">14 open, oldest first. 6 shown.</span></div></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Bug</th><th>State</th><th class="r">Open for</th></tr></thead>
+            <tbody id="bugTable"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel span-6">
+        <div class="panelhead"><div class="t"><h3>Questions waiting for the team</h3><span class="muted small">Oldest first</span></div></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Question</th><th>Ticket</th><th class="r">Waiting</th></tr></thead>
+            <tbody id="qTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- health -->
+  <section id="health">
+    <div class="sechead"><h2>Product health (dev1)</h2><span class="muted small">Does the running app work? App Insights</span></div>
+    <div class="grid">
+      <div class="panel span-5">
+        <div class="panelhead"><div class="t"><h3>Failed events and harvester errors</h3><span class="muted small">Last 7 days</span></div></div>
+        <div class="counters" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <div class="counter"><span class="label">Harvester errors</span><span class="big">4</span><span class="src">cdc.harvester.errors</span></div>
+          <div class="counter unmeasured"><span class="label">Failed events</span><span class="pill none">Not counted</span><span class="src">processor.events.failed (to add)</span></div>
+        </div>
+        <p class="note">Failed events in the Processor are only logged today.</p>
+      </div>
+      <div class="panel span-7">
+        <div class="panelhead">
+          <div class="t"><h3>Duplicate events</h3><span class="muted small">Events the Processor dropped because it already had them, last 7 days</span></div>
+          <span class="pill ok">Normal</span>
+        </div>
+        <div class="counters" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <div class="counter"><span class="label">Processed</span><span class="big">61,204</span><span class="src">processor.events.processed</span></div>
+          <div class="counter"><span class="label">Duplicates skipped</span><span class="big">187</span><span class="src">processor.events.duplicate_skipped</span></div>
+        </div>
+        <div id="evChart"></div>
+        <p class="note">A jump in duplicates means the CDC is sending the same changes again.</p>
+      </div>
+      <div class="panel span-6">
+        <div class="panelhead">
+          <div class="t"><h3>MCP response time</h3><span class="muted small">How long a user waits for the MCP, last 7 days. Limit 10 s, to agree with the team.</span></div>
+          <span class="pill warn">97.4% under 10 s</span>
+        </div>
+        <div class="counters" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+          <div class="counter"><span class="label">Under 10 s</span><span class="big">97.4%</span><span class="src">8,021 of 8,235 requests</span></div>
+          <div class="counter"><span class="label">Over 10 s</span><span class="big" style="color:var(--warn)">214</span><span class="src">requests</span></div>
+          <div class="counter"><span class="label">Slowest</span><span class="big">41 s</span><span class="src">10/27, tool unknown</span></div>
+        </div>
+        <div id="rtChart"></div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--accent-soft)"></i>Under 10 s</span>
+          <span><i class="sw" style="background:var(--warn)"></i>Over 10 s (count on top)</span>
+        </div>
+      </div>
+      <div class="panel span-6 unmeasured">
+        <div class="panelhead">
+          <div class="t"><h3>MCP errors per tool</h3><span class="muted small">What it would show once each call records its tool name</span></div>
+          <span class="pill none">Not recorded</span>
+        </div>
+        <div id="mcpChart"></div>
+        <p class="note">Today a failing tool still returns HTTP 200 and every request is named <span class="mono">POST /mcp/</span>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="gaps">
+    <div class="sechead"><h2>Not measured yet</h2><span class="muted small">Gaps that keep panels above empty or partial</span></div>
+    <ul class="gaps">
+      <li><span class="pill none">Step 3</span><span>Smoke test after each deploy (Task 108676)</span></li>
+      <li><span class="pill none">Step 4</span><span>End-to-end suite on a pipeline, run after each dev1 deploy</span></li>
+      <li><span class="pill none">AC</span><span>AC test coverage script over the acceptance test traits</span></li>
+      <li><span class="pill none">Freshness</span><span>Lag of each change up to the read models, with a backfill tag</span></li>
+      <li><span class="pill none">Events</span><span>Counter for failed events</span></li>
+      <li><span class="pill none">MCP</span><span>Tool name and success on each MCP call</span></li>
+      <li><span class="pill none">Completeness</span><span>Scheduled count comparison, MySQL against the read models</span></li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  // seeded random so the mock looks the same on every load
+  let seed = 20261103;
+  const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, parent) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
+  const fmtMin = s => s < 60 ? Math.round(s) + ' s' : Math.floor(s / 60) + ' m ' + String(Math.round(s % 60)).padStart(2, '0') + ' s';
+
+  // run strips
+  function runs(id, list, max) {
+    const box = document.getElementById(id);
+    list.forEach(r => {
+      const i = document.createElement('i');
+      i.style.height = Math.max(12, Math.round(r.d / max * 100)) + '%';
+      if (r.s === 'f') i.className = 'f';
+      if (r.s === 't') i.className = 't';
+      i.title = r.label;
+      box.appendChild(i);
+    });
+  }
+  const r861 = Array.from({ length: 24 }, (_, k) => { const d = 17 + rnd() * 8; const s = k === 9 ? 'f' : 'p'; return { d, s, label: `PR run ${k + 1}: ${Math.round(d)} min, ${s === 'f' ? 'failed' : 'passed'}` }; });
+  runs('runs861', r861, 26);
+  const dur887 = [16.2, 17.1, 15.8, 16.9, 18.4, 17.2, 16.5, 20, 20, 20, 17.8, 16.4, 17.0, 16.6];
+  const r887 = dur887.map((d, k) => ({ d, s: d >= 20 ? 't' : 'p', label: `Deploy run ${k + 1}: test stage ${d} min, ${d >= 20 ? 'timed out' : 'passed'}` }));
+  runs('runs887', r887, 21);
+  const e2e = [{ d: 38, s: 'p' }, { d: 44, s: 'f' }, { d: 41, s: 'p' }, { d: 47, s: 'p' }, { d: 39, s: 'p' }].map((r, k) => ({ ...r, label: `Manual run ${k + 1}: ${r.d} min, ${r.s === 'f' ? '3 questions failed 3 of 3' : 'passed'}` }));
+  runs('runsE2E', e2e, 50);
+  const smoke = [1.8, 2.1, 1.9, 2.0, 2.3, 1.7, 2.6, 2.0, 1.9, 2.2, 2.0].map((d, k) => ({ d, s: k === 6 ? 'f' : 'p', label: `Example deploy ${k + 1}: smoke test ${d} min, ${k === 6 ? 'failed: MCP /health returned 503' : 'passed'}` }));
+  runs('runsSmoke', smoke, 3);
+
+  // suites
+  const suites = [
+    { n: 'Unit', base: 2950, now: 2961 },
+    { n: 'Integration', base: 66, now: 66 },
+    { n: 'System', base: 136, now: 129, flag: true },
+    { n: 'Acceptance', base: 116, now: 124 },
+    { n: 'Convention', base: 17, now: 17 },
+    { n: 'Vitest (Cockpit web)', base: 63, now: 63 }
+  ];
+  const sbox = document.getElementById('suites');
+  suites.forEach(s => {
+    const d = s.now - s.base;
+    const series = Array.from({ length: 14 }, (_, k) => {
+      const f = k / 13; let v = s.base + (s.now - s.base) * f;
+      if (s.flag) v = k < 10 ? s.base : s.now;
+      return Math.round(v);
+    });
+    const card = document.createElement('div');
+    card.className = 'suite' + (s.flag ? ' flag' : '');
+    card.innerHTML = `<div class="row"><span class="small muted">${s.n}</span><span class="delta ${d < 0 ? 'down' : d > 0 ? 'up' : 'flat'}" title="Change since 14 days ago">${d > 0 ? '+' : ''}${d === 0 ? '±0' : d} in 14 d</span></div><span class="big">${s.now.toLocaleString('en-US')}</span>`;
+    const svg = el('svg', { viewBox: '0 0 140 26', role: 'img', 'aria-label': `${s.n} test count, last 14 runs` });
+    const lo = Math.min(...series) - 1, hi = Math.max(...series) + 1;
+    const x = k => 2 + k * (136 / 13), y = v => 23 - (v - lo) / (hi - lo) * 20;
+    const pts = series.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    el('polyline', { points: pts, fill: 'none', stroke: s.flag ? 'var(--warn)' : 'var(--accent)', 'stroke-width': 1.6, 'stroke-linejoin': 'round' }, svg);
+    el('circle', { cx: x(13), cy: y(series[13]), r: 2.4, fill: s.flag ? 'var(--warn)' : 'var(--accent)' }, svg);
+    card.appendChild(svg);
+    if (s.flag) { const p = document.createElement('span'); p.className = 'small'; p.style.color = 'var(--warn)'; p.textContent = '7 tests removed on 2026-10-31, build green'; card.appendChild(p); }
+    sbox.appendChild(card);
+  });
+
+  // line chart helper
+  function lineChart(host, opts) {
+    const W = 520, H = opts.h || 200, L = 40, R = 10, T = 10, B = 26;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': opts.aria });
+    const n = opts.labels.length;
+    const x = k => L + k * ((W - L - R) / (n - 1));
+    const y = v => T + (1 - (v - opts.min) / (opts.max - opts.min)) * (H - T - B);
+    opts.ticks.forEach(t => {
+      el('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), class: 'gridline' }, svg);
+      const tx = el('text', { x: L - 6, y: y(t) + 3.5, 'text-anchor': 'end' }, svg); tx.textContent = opts.tickFmt ? opts.tickFmt(t) : t;
+    });
+    opts.labels.forEach((lb, k) => {
+      if (k % opts.labelEvery !== 0 && k !== n - 1) return;
+      const tx = el('text', { x: x(k), y: H - 8, 'text-anchor': 'middle' }, svg); tx.textContent = lb;
+    });
+    (opts.refs || []).forEach(r => {
+      el('line', { x1: L, x2: W - R, y1: y(r.v), y2: y(r.v), stroke: 'var(--bad)', 'stroke-width': 1.4, 'stroke-dasharray': '5 4' }, svg);
+      const tx = el('text', { x: W - R, y: y(r.v) - 5, 'text-anchor': 'end' }, svg); tx.textContent = r.label; tx.style.fill = 'var(--bad)';
+    });
+    opts.series.forEach(s => {
+      const pts = s.values.map((v, k) => [x(k), y(v)]);
+      if (s.area) el('path', { d: `M${pts[0][0]},${y(opts.min)} ` + pts.map(p => `L${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ') + ` L${pts[pts.length - 1][0]},${y(opts.min)} Z`, fill: s.color, opacity: 0.12 }, svg);
+      el('polyline', { points: pts.map(p => p.map(c => c.toFixed(1)).join(',')).join(' '), fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+      s.values.forEach((v, k) => {
+        const mark = s.mark ? s.mark(v, k) : null;
+        const last = k === s.values.length - 1;
+        if (mark || last) {
+          const c = el('circle', { cx: pts[k][0], cy: pts[k][1], r: mark ? 4 : 3.2, fill: mark || s.color, stroke: 'var(--surface)', 'stroke-width': 1.5 }, svg);
+          const t = el('title', {}, c); t.textContent = `${opts.labels[k]}: ${s.fmt ? s.fmt(v) : v}`;
+        }
+      });
+    });
+    host.appendChild(svg);
+  }
+
+  const days = Array.from({ length: 14 }, (_, k) => { const d = new Date(Date.UTC(2026, 9, 21 + k)); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; });
+
+  // bugs table
+  const bugs = [
+    ['Reports app returns 404 for every study', 'To Do', 41],
+    ['Subject count includes deleted subjects', 'In Progress', 36],
+    ['list_queries misses queries raised on hidden forms', 'To Do', 33],
+    ['Visit date shown in UTC instead of site time', 'In Progress', 31],
+    ['metric_query times out on a study with 500+ subjects', 'To Do', 18],
+    ['Training subjects counted in recruitment totals', 'In Progress', 9]
+  ];
+  document.getElementById('bugTable').innerHTML = bugs.map(([b, s, d]) =>
+    `<tr><td>${b}</td><td class="small muted" style="white-space:nowrap">${s}</td><td class="r" style="color:${d > 30 ? 'var(--bad)' : d > 7 ? 'var(--warn)' : 'var(--fg)'}">${d} d</td></tr>`).join('');
+
+  // bugs stacked bars (unused)
+  if (document.getElementById('bugChart')) (function () {
+    const sev = [['To Do', [3, 3, 2]], ['In Progress', [3, 1, 2]]];
+    const cols = ['var(--accent-soft)', 'var(--st-lag)', 'var(--bad)'];
+    const W = 520, rowH = 34, L = 82, R = 30, H = sev.length * rowH + 8, max = 8;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Open bugs by state, split by age' });
+    const sx = v => (W - L - R) * v / max;
+    [0, 2, 4, 6, 8].forEach(t => el('line', { x1: L + sx(t), x2: L + sx(t), y1: 0, y2: H - 8, class: 'gridline' }, svg));
+    sev.forEach(([name, parts], i) => {
+      const yy = i * rowH + 6;
+      const lb = el('text', { x: 0, y: yy + 15 }, svg); lb.textContent = name; lb.style.fill = 'var(--fg)';
+      let acc = 0;
+      parts.forEach((v, j) => {
+        if (!v) return;
+        const r = el('rect', { x: L + sx(acc), y: yy + 3, width: Math.max(0, sx(v) - 2), height: 18, rx: 2, fill: cols[j] }, svg);
+        el('title', {}, r).textContent = `${name}: ${v} open, ${['under 7 days', '7 to 30 days', 'over 30 days'][j]}`;
+        acc += v;
+      });
+      const tot = el('text', { x: L + sx(acc) + 6, y: yy + 16 }, svg); tot.textContent = acc;
+    });
+    document.getElementById('bugChart').appendChild(svg);
+  })();
+
+  // questions
+  const qs = [
+    ['Should closed queries count in the open-query total per site?', 'PBI 105523', 19],
+    ['Does a hidden form count as missing data?', 'PBI 105539', 12],
+    ['Which time zone applies to a visit date in the answer?', 'PBI 105519', 9],
+    ['Are Training subjects excluded from every metric?', 'PBI 105521', 6],
+    ['What does the bot answer above the 500-row tool cap?', 'PBI 107069', 3],
+    ['Is a deleted site listed with a flag or left out?', 'PBI 107069', 1]
+  ];
+  document.getElementById('qTable').innerHTML = qs.map(([q, t, d]) =>
+    `<tr><td>${q}</td><td class="mono small muted" style="white-space:nowrap">${t}</td><td class="r" style="color:${d > 14 ? 'var(--bad)' : d > 7 ? 'var(--warn)' : 'var(--fg)'}">${d} d</td></tr>`).join('');
+
+  // completeness example: each cell is [missing, extra, persists]; a string means the study was skipped
+  const comp = [
+    ['MOCK Oncology A', [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+    ['MOCK Cardio B', [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+    ['MOCK Vaccine C', [0, 0], [0, 0], [0, 0], [39, 0, true], [0, 0], [0, 0]],
+    ['MOCK Derm D', [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1]],
+    ['MOCK Neuro E', 'Skipped: lagging'],
+    ['MOCK Rare F', 'Skipped: backfilling']
+  ];
+  const compCell = ([miss, extra, persist]) => {
+    if (!miss && !extra) return '<td class="r" style="color:var(--ok)" title="Matches MySQL">✓</td>';
+    const txt = [miss ? '−' + miss : '', extra ? '+' + extra : ''].filter(Boolean).join(' ');
+    return `<td class="r" style="color:${persist ? 'var(--bad)' : 'var(--warn)'};font-weight:500" title="${miss} missing, ${extra} extra, ${persist ? 'for 3 runs in a row' : 'first run'}">${txt}</td>`;
+  };
+  document.getElementById('compTable').innerHTML = comp.map(([s, ...c]) => typeof c[0] === 'string'
+    ? `<tr><td>${s}</td><td colspan="6" class="small muted">${c[0]}</td></tr>`
+    : `<tr><td>${s}</td>${c.map(compCell).join('')}</tr>`).join('');
+
+  // AC coverage
+  // only PBIs with gaps, grouped by feature: [id, title, state, covered, total]
+  // only PBIs with an untested AC, Done first: [id, title, state, covered, total]
+  const acGaps = [
+    ['2014', 'MOCK MCP: Enable questions about missing data', 'Done', 6, 8],
+    ['2011', 'MOCK MCP: Enable questions about subjects', 'Done', 5, 7],
+    ['2020', 'MOCK MCP: Enable questions about design version', 'Testing', 2, 4],
+    ['2031', 'MOCK MCP: Enable questions about subject visit history', 'Testing', 1, 5],
+    ['2019', 'MOCK MCP: Enable questions about upcoming and overdue visits', 'Not set', 0, 5]
+  ];
+  const acRow = ([id, title, state, cov, tot]) => {
+    const pct = Math.round(cov / tot * 100);
+    const col = state === 'Done' ? 'var(--bad)' : 'var(--warn)';
+    return `<div class="acrow"><span class="mono small">PBI ${id}</span><div style="min-width:0"><div class="small" style="display:flex;justify-content:space-between;gap:8px"><span>${title}</span><span style="color:${col};white-space:nowrap" title="In Sprint State">${state}</span></div><div class="acbar" title="${cov} of ${tot} ACs have a test"><i class="${cov ? '' : 'zero'}" style="width:${pct}%"></i></div></div><span class="mono small" style="text-align:right;color:${col}">${cov}/${tot}</span></div>`;
+  };
+  const doneGaps = acGaps.filter(p => p[2] === 'Done'), workGaps = acGaps.filter(p => p[2] !== 'Done');
+  document.getElementById('acList').innerHTML =
+    `<details class="acfeat" open><summary><span>Done, released without a test for every AC</span><span class="pill bad">${doneGaps.length} PBIs</span></summary><div class="aclist">${doneGaps.map(acRow).join('')}</div></details>` +
+    `<details class="acfeat" open><summary><span>Still in work</span><span class="pill warn">${workGaps.length} PBIs</span></summary><div class="aclist">${workGaps.map(acRow).join('')}</div></details>`;
+
+  // coverage of Done PBIs per sprint
+  (function () {
+    const sprints = ['S38', 'S39', 'S40', 'S41', 'S42', 'S43'], v = [62, 70, 78, 85, 91, 90];
+    const W = 300, H = 110, L = 30, R = 8, T = 10, B = 22;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Coverage of Done PBIs per sprint, rising from 62% to 90%' });
+    const x = k => L + k * ((W - L - R) / (v.length - 1)), y = p => T + (1 - p / 100) * (H - T - B);
+    [0, 50, 100].forEach(t => { el('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), class: 'gridline' }, svg); const tx = el('text', { x: L - 5, y: y(t) + 3.5, 'text-anchor': 'end' }, svg); tx.textContent = t + '%'; });
+    el('polyline', { points: v.map((p, k) => `${x(k)},${y(p)}`).join(' '), fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+    v.forEach((p, k) => {
+      const c = el('circle', { cx: x(k), cy: y(p), r: k === v.length - 1 ? 3.5 : 2.5, fill: 'var(--accent)' }, svg); el('title', {}, c).textContent = `${sprints[k]}: ${p}%`;
+      const tx = el('text', { x: x(k), y: H - 6, 'text-anchor': 'middle' }, svg); tx.textContent = sprints[k];
+    });
+    document.getElementById('acTrend').appendChild(svg);
+  })();
+
+  // freshness
+  (function () {
+    const total = [64, 81, 47, 92, 118, 55, 73, 88, 61, 102, 77, 69, 58, 84];
+    const late = [0, 0, 0, 1, 2, 0, 0, 0, 0, 1, 0, 0, 0, 0];
+    const W = 520, H = 190, L = 40, R = 10, T = 16, B = 26, max = 120;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Changes per day, split into readable within 5 minutes and later than 5 minutes' });
+    const bw = (W - L - R) / total.length;
+    const y = v => T + (1 - v / max) * (H - T - B);
+    [0, 40, 80, 120].forEach(t => { el('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), class: 'gridline' }, svg); const tx = el('text', { x: L - 6, y: y(t) + 3.5, 'text-anchor': 'end' }, svg); tx.textContent = t; });
+    total.forEach((v, k) => {
+      const x0 = L + k * bw + bw * 0.2, w = bw * 0.6;
+      const ok = v - late[k];
+      const r = el('rect', { x: x0, y: y(v), width: w, height: y(0) - y(v), rx: 2, fill: 'var(--accent-soft)' }, svg);
+      el('title', {}, r).textContent = `${days[k]}: ${ok} of ${v} changes within 5 min (${(ok / v * 100).toFixed(1)}%)`;
+      if (late[k]) {
+        const lr = el('rect', { x: x0, y: y(v), width: w, height: Math.max(4, y(0) - y(late[k])), rx: 1, fill: 'var(--bad)' }, svg);
+        el('title', {}, lr).textContent = `${days[k]}: ${late[k]} changes later than 5 min`;
+        const lt = el('text', { x: x0 + w / 2, y: y(v) - 4, 'text-anchor': 'middle' }, svg); lt.textContent = late[k]; lt.style.fill = 'var(--bad)';
+      }
+      if (k % 2 === 0 || k === total.length - 1) { const tx = el('text', { x: L + k * bw + bw / 2, y: H - 8, 'text-anchor': 'middle' }, svg); tx.textContent = days[k]; }
+    });
+    document.getElementById('freshChart').appendChild(svg);
+  })();
+
+  // sync grid
+  const harvesters = ['Study', 'Site', 'Subject', 'Event', 'Form', 'Item', 'Query', 'Design'];
+  const studies = ['MOCK Oncology A', 'MOCK Cardio B', 'MOCK Vaccine C', 'MOCK Derm D', 'MOCK Neuro E', 'MOCK Rare F'];
+  const state = (si, hi) => {
+    if (si === 4 && (hi === 4 || hi === 5)) return 'lag';
+    if (si === 5) return hi < 3 ? 'caught' : hi < 6 ? 'backfill' : 'pending';
+    return 'caught';
+  };
+  const names = { caught: 'Caught up', lag: 'Lagging', backfill: 'Backfilling', pending: 'Pending' };
+  const g = document.getElementById('syncGrid');
+  g.style.gridTemplateColumns = `minmax(110px, 1.6fr) repeat(${harvesters.length}, minmax(28px, 1fr))`;
+  let html = '<span></span>' + harvesters.map(h => `<span class="h" title="${h}">${h}</span>`).join('');
+  studies.forEach((s, si) => {
+    html += `<span class="s" title="${s}">${s}</span>` + harvesters.map((h, hi) => { const st = state(si, hi); return `<span class="cell ${st}" title="${s} · ${h}: ${names[st]}"></span>`; }).join('');
+  });
+  g.innerHTML = html;
+  document.getElementById('lagNote').innerHTML = '<b>Lagging:</b> MOCK Neuro E, Form and Item, for 47 min. <b>Backfilling:</b> MOCK Rare F, enabled 2 days ago.';
+
+  // events chart: daily duplicates skipped and harvester errors
+  (function () {
+    const dup = [22, 31, 18, 25, 40, 27, 24];
+    const err = [0, 0, 0, 0, 0, 0, 0];
+    const lab = days.slice(7);
+    const W = 520, H = 120, L = 40, R = 10, T = 8, B = 24, max = 45;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Duplicates skipped and harvester errors per day' });
+    const bw = (W - L - R) / dup.length;
+    const y = v => T + (1 - v / max) * (H - T - B);
+    [0, 20, 40].forEach(t => { el('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), class: 'gridline' }, svg); const tx = el('text', { x: L - 6, y: y(t) + 3.5, 'text-anchor': 'end' }, svg); tx.textContent = t; });
+    dup.forEach((v, k) => {
+      const x0 = L + k * bw + bw * 0.18;
+      const r = el('rect', { x: x0, y: y(v), width: bw * 0.42, height: y(0) - y(v), rx: 2, fill: 'var(--accent-soft)' }, svg);
+      el('title', {}, r).textContent = `${lab[k]}: ${v} duplicates skipped`;
+      if (err[k]) {
+        const e = el('rect', { x: x0 + bw * 0.44, y: y(err[k] * 5), width: bw * 0.2, height: y(0) - y(err[k] * 5), rx: 2, fill: 'var(--bad)' }, svg);
+        el('title', {}, e).textContent = `${lab[k]}: ${err[k]} harvester errors`;
+        const et = el('text', { x: x0 + bw * 0.54, y: y(err[k] * 5) - 4, 'text-anchor': 'middle' }, svg); et.textContent = err[k]; et.style.fill = 'var(--bad)';
+      }
+      const tx = el('text', { x: L + k * bw + bw / 2, y: H - 8, 'text-anchor': 'middle' }, svg); tx.textContent = lab[k];
+    });
+    document.getElementById('evChart').appendChild(svg);
+    const lg = document.createElement('div'); lg.className = 'legend';
+    lg.innerHTML = '<span><i class="sw" style="background:var(--accent-soft)"></i>Duplicates skipped per day</span>';
+    document.getElementById('evChart').appendChild(lg);
+  })();
+
+  // MCP response time per day: total requests and those over 10 s
+  (function () {
+    const tot = [1120, 1340, 980, 1205, 1410, 1065, 1115], slow = [22, 41, 18, 30, 52, 27, 24];
+    const lab = days.slice(7);
+    const W = 520, H = 130, L = 40, R = 10, T = 16, B = 24, max = 1500;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'MCP requests per day, split into under and over 10 seconds' });
+    const bw = (W - L - R) / tot.length, y = v => T + (1 - v / max) * (H - T - B);
+    [0, 500, 1000, 1500].forEach(t => { el('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), class: 'gridline' }, svg); const tx = el('text', { x: L - 6, y: y(t) + 3.5, 'text-anchor': 'end' }, svg); tx.textContent = t; });
+    tot.forEach((v, k) => {
+      const x0 = L + k * bw + bw * 0.2, w = bw * 0.6;
+      const r = el('rect', { x: x0, y: y(v), width: w, height: y(0) - y(v), rx: 2, fill: 'var(--accent-soft)' }, svg);
+      el('title', {}, r).textContent = `${lab[k]}: ${v - slow[k]} of ${v} requests under 10 s`;
+      const s = el('rect', { x: x0, y: y(v), width: w, height: Math.max(3, y(0) - y(slow[k])), rx: 1, fill: 'var(--warn)' }, svg);
+      el('title', {}, s).textContent = `${lab[k]}: ${slow[k]} requests over 10 s`;
+      const st = el('text', { x: x0 + w / 2, y: y(v) - 4, 'text-anchor': 'middle' }, svg); st.textContent = slow[k]; st.style.fill = 'var(--warn)';
+      const tx = el('text', { x: L + k * bw + bw / 2, y: H - 8, 'text-anchor': 'middle' }, svg); tx.textContent = lab[k];
+    });
+    document.getElementById('rtChart').appendChild(svg);
+  })();
+
+  // MCP errors per tool (illustration)
+  (function () {
+    const tools = [['metric_query', 2.4], ['list_queries', 1.1], ['list_forms', 0.8], ['list_subjects', 0.5], ['list_sites', 0.2], ['list_metrics', 0.0]];
+    const W = 520, rowH = 26, L = 104, R = 44, H = tools.length * rowH + 4, max = 3;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Illustration of error rate per MCP tool' });
+    tools.forEach(([n, v], i) => {
+      const yy = i * rowH + 4;
+      const t = el('text', { x: 0, y: yy + 13 }, svg); t.textContent = n;
+      el('rect', { x: L, y: yy + 3, width: W - L - R, height: 12, rx: 2, fill: 'var(--surface)', stroke: 'var(--line)' }, svg);
+      if (v) el('rect', { x: L, y: yy + 3, width: (W - L - R) * v / max, height: 12, rx: 2, fill: 'var(--none)', opacity: 0.7 }, svg);
+      const vt = el('text', { x: W - R + 6, y: yy + 13 }, svg); vt.textContent = v.toFixed(1) + '%';
+    });
+    document.getElementById('mcpChart').appendChild(svg);
+  })();
+})();
+</script>
+
+</body></html>
